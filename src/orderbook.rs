@@ -165,6 +165,72 @@ impl OrderBook {
             return None;
         } 
         
+        if order.borrow().get_order_type() == OrderType::Market {
+            if order.borrow().get_side() == Side::Buy && !self.asks.is_empty() {
+                while !self.asks.is_empty() {
+                    if order.borrow().get_remaining_quantity() == 0 {
+                        break;
+                    }
+                    {
+                        let (_, asks) = self.asks.iter().next().unwrap();
+                        let mut best_ask = asks.front().unwrap().borrow_mut();
+                        let quantity = min(best_ask.get_remaining_quantity(), order.borrow().get_remaining_quantity());
+                        best_ask.fill(quantity);
+                        order.borrow_mut().fill(quantity);
+                        if best_ask.isfilled() {
+                            self.orders.remove(&best_ask.get_order_id());
+                        }
+                    }
+                    let mut is_level_empty = false;
+                    {
+                        let (_, asks) = self.asks.iter_mut().next().unwrap();
+                        if asks.front().unwrap().borrow().isfilled() {
+                            asks.pop_front();
+                        }
+                        if asks.is_empty() {
+                            is_level_empty = true;
+                        }
+                    }
+                    let best_ask_price = *self.asks.keys().next().unwrap();
+                    if is_level_empty {
+                        self.asks.remove(&best_ask_price);
+                    }
+                }
+            } else {
+                while !self.bids.is_empty() {
+                    if order.borrow().get_remaining_quantity() == 0 {
+                        break;
+                    }
+                    {
+                        let (_, bids) = self.bids.iter().next().unwrap();
+                        let mut best_bid = bids.front().unwrap().borrow_mut();
+                        let quantity = min(best_bid.get_remaining_quantity(), order.borrow().get_remaining_quantity());
+                        best_bid.fill(quantity);
+                        order.borrow_mut().fill(quantity);
+                        if best_bid.isfilled() {
+                            self.orders.remove(&best_bid.get_order_id());
+                        }
+                    }
+
+                    let mut is_level_empty = false;
+                    {
+                        let (_, bids) = self.bids.iter_mut().next().unwrap();
+                        if bids.front().unwrap().borrow().isfilled() {
+                            bids.pop_front();
+                        }
+                        if bids.is_empty() {
+                            is_level_empty = true;
+                        }
+                    }
+
+                    let best_bid_price = *self.bids.keys().next().unwrap();
+                    if is_level_empty {
+                        self.bids.remove(&best_bid_price);
+                    }
+                }
+            }
+        }
+
         if order.borrow().get_order_type() == OrderType::FillAndKill && !self.can_match(order.borrow().get_side(), order.borrow().get_price()) {
             return None;
         }
