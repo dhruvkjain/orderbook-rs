@@ -1,9 +1,9 @@
 use super::{OrderId, Price, Quantity};
 
 pub struct TradeInfo {
-    order_id: OrderId,
-    price: Price,
-    quantity: Quantity,
+    pub order_id: OrderId,
+    pub price: Price,
+    pub quantity: Quantity,
 }
 impl TradeInfo {
     pub fn new(order_id: OrderId, price: Price, quantity: Quantity) -> Self {

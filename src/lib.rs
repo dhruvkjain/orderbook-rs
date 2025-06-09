@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, HashMap, VecDeque};
+pub use std::collections::{BTreeMap, HashMap, VecDeque};
+pub use ordered_float::OrderedFloat;
 pub use levelinfos::{LevelInfo, OrderbookLevelInfos};
 pub use order::Order;
 pub use modifyorder::OrderModify;
@@ -20,7 +21,7 @@ use std::cell::RefCell;
 
 
 
-pub type Price = i32;
+pub type Price = OrderedFloat<f32>;
 pub type Quantity = u32;
 pub type OrderId = u64;
 // ----------------------------
@@ -36,4 +37,5 @@ pub mod modifyorder;
 pub mod trade;
 pub mod ordertypes;
 pub mod side;
+pub mod helperfns;
 pub mod orderbook;

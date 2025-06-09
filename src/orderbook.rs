@@ -166,7 +166,7 @@ impl OrderBook {
         } 
         
         if order.borrow().get_order_type() == OrderType::Market {
-            if order.borrow().get_side() == Side::Buy && !self.asks.is_empty() {
+            if order.borrow().get_side() == Side::Buy {
                 while !self.asks.is_empty() {
                     if order.borrow().get_remaining_quantity() == 0 {
                         break;
@@ -196,6 +196,7 @@ impl OrderBook {
                         self.asks.remove(&best_ask_price);
                     }
                 }
+                return None;
             } else {
                 while !self.bids.is_empty() {
                     if order.borrow().get_remaining_quantity() == 0 {
@@ -228,6 +229,7 @@ impl OrderBook {
                         self.bids.remove(&best_bid_price);
                     }
                 }
+                return None;
             }
         }
 
@@ -253,6 +255,23 @@ impl OrderBook {
                 location_index: order_index 
             }
         );
+
+        // let orderlevelinfos= self.get_orderlevelinfos();
+        // let bidslevel = orderlevelinfos.get_bids();
+        // let askslevel = orderlevelinfos.get_asks();
+        
+        // println!("Bids:");
+        // let lvl = 0;
+        // for bidlvl in bidslevel {
+        //     println!("Level: {} -> Price: {}, Quantity: {}", lvl, bidlvl.price, bidlvl.quantity);
+        // };
+
+        // println!();
+        // println!("Asks:");
+        // let lvl = 0;
+        // for asklvl in askslevel {
+        //     println!("Level: {} -> Price: {}, Quantity: {}", lvl, asklvl.price, asklvl.quantity);
+        // };
 
         return Some(self.match_orders());
     }

@@ -1,8 +1,8 @@
 use super::{Price, Quantity};
 
 pub struct LevelInfo {
-    price: Price,
-    quantity: Quantity,
+    pub price: Price,
+    pub quantity: Quantity,
 }
 impl LevelInfo {
     pub fn new(price: Price, quantity: Quantity) -> Self {
@@ -21,7 +21,7 @@ impl OrderbookLevelInfos {
     pub fn get_bids(&self) -> &Vec<LevelInfo> {
         &self.bids
     }
-    pub fn get_sks(&self) -> &Vec<LevelInfo> {
+    pub fn get_asks(&self) -> &Vec<LevelInfo> {
         &self.asks
     }
 }
