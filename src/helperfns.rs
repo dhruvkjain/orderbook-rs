@@ -1,6 +1,6 @@
 use super::Trades;
 
-pub fn print_trades (trades:Trades) {
+pub fn print_trades (trades: &Trades) {
     for trade in trades {
         let bid_trade = trade.get_bid_trade();
         let ask_trade = trade.get_ask_trade();

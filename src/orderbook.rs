@@ -1,4 +1,6 @@
-use std::cmp::{Reverse, min};
+use std::{cmp::{min, Reverse}, f32::NAN};
+use crate::helperfns::print_trades;
+
 use super::*;
 
 pub struct OrderEntry {
@@ -31,96 +33,64 @@ impl OrderBook {
     fn match_orders(&mut self) -> Trades {
         let mut trades: Trades = Vec::with_capacity(self.orders.len());
 
-        loop {
-            if self.bids.is_empty() || self.asks.is_empty() {
-                println!("Empty Market !!!");
-                break;
-            }
-            let (Reverse(best_bid_price), _) = self.bids.iter().next().unwrap();
-            let (best_ask_price, _) = self.asks.iter().next().unwrap();
+        while !self.bids.is_empty() && !self.asks.is_empty() {
+            let Reverse(best_bid_price) = *self.bids.keys().next().unwrap();
+            let best_ask_price = *self.asks.keys().next().unwrap();
 
             if *best_bid_price < *best_ask_price {
-                println!("Can't match order: current best bid price < current best ask price");
+                println!("Can't match order: best bid price < best ask price");
                 break;
             }
 
-            loop {
-                {
-                    let (_, bids) = self.bids.iter_mut().next().unwrap();
-                    let (_, asks) = self.asks.iter_mut().next().unwrap();
+            let bids = self.bids.get_mut(&Reverse(best_bid_price)).unwrap();
+            let asks = self.asks.get_mut(&best_ask_price).unwrap();
 
-                    if !bids.is_empty() && !asks.is_empty() {
-                        break;
-                    }
+            // Process one bid and one ask at a time
+            if let (Some(bid_rc), Some(ask_rc)) = (bids.front(), asks.front()) {
+                let mut bid = bid_rc.borrow_mut();
+                let mut ask = ask_rc.borrow_mut();
 
-                    {
-                        let mut bid = bids.front().unwrap().borrow_mut();
-                        let mut ask = asks.front().unwrap().borrow_mut();
+                let quantity = min(bid.get_remaining_quantity(), ask.get_remaining_quantity());
 
-                        let quantity =
-                            min(bid.get_remaining_quantity(), ask.get_remaining_quantity());
-
-                        bid.fill(quantity);
-                        ask.fill(quantity);
-
-                        if bid.isfilled() {
-                            self.orders.remove(&bid.get_order_id());
-                        }
-                        if ask.isfilled() {
-                            self.orders.remove(&ask.get_order_id());
-                        }
-                    } // this scope is to kill the mutable reference of bids and asks
-
-                    if bids.front().unwrap().borrow().isfilled() {
-                        bids.pop_front();
-                    }
-                    if asks.front().unwrap().borrow().isfilled() {
-                        asks.pop_front();
-                    }
-                } // this scope is to kill the mutable reference of self.bids and self.asks
-
-                let best_bid_price = *self.bids.keys().next().unwrap();
-                let best_ask_price = *self.asks.keys().next().unwrap();
-                // cloning the keys, to no longer hold an immutable borrow so that we can
-                // mutably borrow self.bids and self.asks to use remove on them
-
-                let bids_empty = self.bids.get(&best_bid_price).unwrap().is_empty();
-                let asks_empty = self.asks.get(&best_ask_price).unwrap().is_empty();
-
-                if bids_empty {
-                    self.bids.remove(&best_bid_price);
-                }
-                if asks_empty {
-                    self.asks.remove(&best_ask_price);
-                }
-
-                let bid = self
-                    .bids
-                    .get(&best_bid_price)
-                    .unwrap()
-                    .front()
-                    .unwrap()
-                    .borrow();
-                let ask = self
-                    .asks
-                    .get(&best_ask_price)
-                    .unwrap()
-                    .front()
-                    .unwrap()
-                    .borrow();
+                // Create trade
                 let trade = Trade::new(
                     TradeInfo::new(
                         bid.get_order_id(),
                         bid.get_price(),
-                        min(bid.get_remaining_quantity(), ask.get_remaining_quantity()),
+                        quantity,
                     ),
                     TradeInfo::new(
                         ask.get_order_id(),
                         ask.get_price(),
-                        min(bid.get_remaining_quantity(), ask.get_remaining_quantity()),
-                    )
+                        quantity,
+                    ),
                 );
                 trades.push(trade);
+
+                // Fill orders
+                bid.fill(quantity);
+                ask.fill(quantity);
+
+                drop(bid);
+                drop(ask);
+
+                // Remove filled orders from the order book
+                if bid_rc.borrow().isfilled() {
+                    self.orders.remove(&bid_rc.borrow().get_order_id());
+                    bids.pop_front();
+                }
+                if ask_rc.borrow().isfilled() {
+                    self.orders.remove(&ask_rc.borrow().get_order_id());
+                    asks.pop_front();
+                }
+            }
+
+            // Clean up empty price levels
+            if self.bids.get(&Reverse(best_bid_price)).unwrap().is_empty() {
+                self.bids.remove(&Reverse(best_bid_price));
+            }
+            if self.asks.get(&best_ask_price).unwrap().is_empty() {
+                self.asks.remove(&best_ask_price);
             }
         }
 
@@ -164,9 +134,14 @@ impl OrderBook {
         if self.orders.contains_key(&order.borrow().get_order_id()){
             return None;
         } 
+
+        if order.borrow().get_order_type() != OrderType::Market && order.borrow().get_price() == NAN {
+            return None;
+        }
         
         if order.borrow().get_order_type() == OrderType::Market {
             if order.borrow().get_side() == Side::Buy {
+                let mut trades: Trades = Vec::with_capacity(self.orders.len());
                 while !self.asks.is_empty() {
                     if order.borrow().get_remaining_quantity() == 0 {
                         break;
@@ -177,6 +152,11 @@ impl OrderBook {
                         let quantity = min(best_ask.get_remaining_quantity(), order.borrow().get_remaining_quantity());
                         best_ask.fill(quantity);
                         order.borrow_mut().fill(quantity);
+
+                        let bid_trade = TradeInfo::new(order.borrow().get_order_id(), best_ask.get_price(), quantity);
+                        let ask_trade = TradeInfo::new(best_ask.get_order_id(), best_ask.get_price(), quantity);
+                        trades.push(Trade::new(bid_trade, ask_trade));
+
                         if best_ask.isfilled() {
                             self.orders.remove(&best_ask.get_order_id());
                         }
@@ -196,8 +176,9 @@ impl OrderBook {
                         self.asks.remove(&best_ask_price);
                     }
                 }
-                return None;
+                return Some(trades);
             } else {
+                let mut trades: Trades = Vec::with_capacity(self.orders.len());
                 while !self.bids.is_empty() {
                     if order.borrow().get_remaining_quantity() == 0 {
                         break;
@@ -208,6 +189,11 @@ impl OrderBook {
                         let quantity = min(best_bid.get_remaining_quantity(), order.borrow().get_remaining_quantity());
                         best_bid.fill(quantity);
                         order.borrow_mut().fill(quantity);
+
+                        let bid_trade = TradeInfo::new(order.borrow().get_order_id(), best_bid.get_price(), quantity);
+                        let ask_trade = TradeInfo::new(best_bid.get_order_id(), best_bid.get_price(), quantity);
+                        trades.push(Trade::new(bid_trade, ask_trade));
+
                         if best_bid.isfilled() {
                             self.orders.remove(&best_bid.get_order_id());
                         }
@@ -229,7 +215,7 @@ impl OrderBook {
                         self.bids.remove(&best_bid_price);
                     }
                 }
-                return None;
+                return Some(trades);
             }
         }
 
@@ -277,7 +263,8 @@ impl OrderBook {
     }
 
     pub fn cancel_order(&mut self, order_id:OrderId) {
-        if self.orders.contains_key(&order_id){
+        
+        if !self.orders.contains_key(&order_id){
             return ;
         } 
 
